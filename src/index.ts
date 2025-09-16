@@ -26,10 +26,39 @@ function formatAuthor(author: any): string {
   return 'Unknown Author';
 }
 
-// Helper function to generate BibTeX
-function generateBibTeX(metadata: any): string {
-  const data = metadata.message || metadata;
-  
+// Helper function to fetch and format BibTeX
+async function fetchBibTeX(doi: string): Promise<string | null> {
+  try {
+    // Try to get BibTeX directly from CrossRef
+    const response = await axios.get(`${CROSSREF_API_URL}/${doi}/transform/application/x-bibtex`, {
+      headers: {
+        'User-Agent': USER_AGENT,
+      },
+    });
+    
+    let bibtex = response.data;
+    
+    // Remove abstract field if present
+    bibtex = bibtex.replace(/^\s*abstract\s*=\s*{[^}]*},?\s*$/gm, '');
+    
+    // Wrap title in double curly brackets if not already
+    bibtex = bibtex.replace(/title\s*=\s*{([^}]*)}/g, (match: string, title: string) => {
+      // Check if already has double brackets
+      if (title.startsWith('{') && title.endsWith('}')) {
+        return match;
+      }
+      return `title = {{${title}}}`;
+    });
+    
+    return bibtex;
+  } catch (error) {
+    // If direct BibTeX fetch fails, return null to use fallback
+    return null;
+  }
+}
+
+// Helper function to generate BibTeX from metadata (fallback)
+function generateBibTeXFromMetadata(data: any): string {
   // Determine entry type
   let entryType = 'article';
   if (data.type === 'book') {
@@ -38,6 +67,10 @@ function generateBibTeX(metadata: any): string {
     entryType = 'incollection';
   } else if (data.type === 'proceedings-article') {
     entryType = 'inproceedings';
+  } else if (data.type === 'report') {
+    entryType = 'techreport';
+  } else if (data.type === 'thesis' || data.type === 'dissertation') {
+    entryType = 'phdthesis';
   }
   
   // Generate citation key
@@ -55,50 +88,48 @@ function generateBibTeX(metadata: any): string {
   // Format authors
   const authors = data.author?.map((a: any) => formatAuthor(a)).join(' and ') || 'Unknown';
   
-  // Build BibTeX entry
-  let bibtex = `@${entryType}{${citationKey},\n`;
-  bibtex += `  title = ${formattedTitle},\n`;
-  bibtex += `  author = {${authors}},\n`;
-  bibtex += `  year = {${year}},\n`;
+  // Build BibTeX entry with proper formatting
+  const fields = [];
+  fields.push(`  title = ${formattedTitle}`);
+  fields.push(`  author = {${authors}}`);
+  fields.push(`  year = {${year}}`);
   
   // Add journal/publisher info
   if (data['container-title']?.[0]) {
     if (entryType === 'article') {
-      bibtex += `  journal = {${data['container-title'][0]}},\n`;
-    } else {
-      bibtex += `  booktitle = {${data['container-title'][0]}},\n`;
+      fields.push(`  journal = {${data['container-title'][0]}}`);
+    } else if (entryType === 'incollection' || entryType === 'inproceedings') {
+      fields.push(`  booktitle = {${data['container-title'][0]}}`);
     }
   }
   
   if (data.publisher) {
-    bibtex += `  publisher = {${data.publisher}},\n`;
+    fields.push(`  publisher = {${data.publisher}}`);
   }
   
   // Add volume, issue, pages
   if (data.volume) {
-    bibtex += `  volume = {${data.volume}},\n`;
+    fields.push(`  volume = {${data.volume}}`);
   }
   if (data.issue) {
-    bibtex += `  number = {${data.issue}},\n`;
+    fields.push(`  number = {${data.issue}}`);
   }
   if (data.page) {
-    bibtex += `  pages = {${data.page}},\n`;
+    fields.push(`  pages = {${data.page}}`);
   }
   
   // Add DOI
   if (data.DOI) {
-    bibtex += `  doi = {${data.DOI}},\n`;
+    fields.push(`  doi = {${data.DOI}}`);
   }
   
   // Add URL
   if (data.URL) {
-    bibtex += `  url = {${data.URL}},\n`;
+    fields.push(`  url = {${data.URL}}`);
   }
   
-  // Remove trailing comma and close
-  bibtex = bibtex.slice(0, -2) + '\n}';
-  
-  return bibtex;
+  // Construct final BibTeX
+  return `@${entryType}{${citationKey},\n${fields.join(',\n')}\n}`;
 }
 
 // Main server setup
@@ -155,6 +186,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
   
   if (name === "fetch_doi_metadata") {
+    if (!args || !args.doi) {
+      throw new McpError(
+        ErrorCode.InvalidParams,
+        "Missing required parameter: doi"
+      );
+    }
     const doi = args.doi as string;
     
     try {
@@ -166,6 +203,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       });
       
       const data = response.data.message;
+      
+      // Try to get proper BibTeX
+      let bibtex = await fetchBibTeX(doi);
+      if (!bibtex) {
+        // Fallback to generating from metadata
+        bibtex = generateBibTeXFromMetadata(data);
+      }
       
       // Extract and format metadata
       const metadata = {
@@ -194,8 +238,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         published_date: data['published-print'] || data['published-online'] || null,
         references_count: data['references-count'] || 0,
         is_referenced_by_count: data['is-referenced-by-count'] || 0,
-        bibtex: generateBibTeX(data),
-        raw_data: data,
+        bibtex: bibtex,
       };
       
       return {
@@ -215,6 +258,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
   
   if (name === "fetch_references") {
+    if (!args || !args.doi) {
+      throw new McpError(
+        ErrorCode.InvalidParams,
+        "Missing required parameter: doi"
+      );
+    }
     const doi = args.doi as string;
     
     try {
