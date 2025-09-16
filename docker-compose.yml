@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  crossref-mcp:
+    build: .
+    image: crossref-mcp:latest
+    stdin_open: true
+    tty: true
+    environment:
+      - NODE_ENV=production
+      - USER_AGENT=CrossRefMCP/1.0 (mailto:alberto.mercurio@epfl.ch)
