@@ -7,3 +7,4 @@ services:
     environment:
       - NODE_ENV=production
       - USER_AGENT=CrossRefMCP/1.0 (mailto:alberto.mercurio@epfl.ch)
+    init: true

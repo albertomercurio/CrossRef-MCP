@@ -5,6 +5,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
+  InitializeRequestSchema,
   McpError,
   ErrorCode,
 } from "@modelcontextprotocol/sdk/types.js";
@@ -16,14 +17,100 @@ const USER_AGENT = process.env.USER_AGENT || 'CrossRefMCP/1.0';
 
 // Helper function to format author names
 function formatAuthor(author: any): string {
+  // Try to get the fullest possible name representation
   if (author.given && author.family) {
     return `${author.given} ${author.family}`;
   } else if (author.family) {
     return author.family;
   } else if (author.name) {
+    // Some entries may have a single 'name' field with full name
     return author.name;
   }
   return 'Unknown Author';
+}
+
+// Helper function to fetch full name from ORCID (when available)
+async function fetchORCIDName(orcid: string): Promise<string | null> {
+  try {
+    // Clean ORCID - remove URL prefix if present
+    const cleanORCID = orcid.replace('https://orcid.org/', '').replace('http://orcid.org/', '');
+    
+    const response = await axios.get(`https://pub.orcid.org/v3.0/${cleanORCID}/person`, {
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': USER_AGENT,
+      },
+    });
+    
+    const person = response.data;
+    const name = person.name;
+    
+    if (name && name['given-names'] && name['family-name']) {
+      const givenNames = name['given-names'].value;
+      const familyName = name['family-name'].value;
+      return `${givenNames} ${familyName}`;
+    }
+    
+    return null;
+  } catch (error) {
+    // If ORCID lookup fails, return null to use fallback
+    return null;
+  }
+}
+
+// Enhanced helper function to format author names with ORCID lookup
+async function formatAuthorEnhanced(author: any): Promise<{
+  given: string;
+  family: string;
+  full_name: string;
+  orcid: string | null;
+  name_source: 'crossref' | 'orcid' | 'fallback';
+}> {
+  const given = author.given || '';
+  const family = author.family || '';
+  let fullName = formatAuthor(author);
+  let nameSource: 'crossref' | 'orcid' | 'fallback' = 'crossref';
+  const orcid = author.ORCID || null;
+  
+  // If we have an ORCID and the given name appears abbreviated (1-2 chars + period), try ORCID lookup
+  if (orcid && given && given.length <= 3 && given.includes('.')) {
+    try {
+      const orcidName = await fetchORCIDName(orcid);
+      if (orcidName) {
+        fullName = orcidName;
+        nameSource = 'orcid';
+        
+        // Try to extract given name from ORCID for consistency
+        const nameParts = orcidName.split(' ');
+        if (nameParts.length >= 2) {
+          const orcidGiven = nameParts.slice(0, -1).join(' ');
+          const orcidFamily = nameParts[nameParts.length - 1];
+          
+          return {
+            given: orcidGiven,
+            family: orcidFamily,
+            full_name: fullName,
+            orcid,
+            name_source: nameSource
+          };
+        }
+      }
+    } catch (error) {
+      // Continue with CrossRef data if ORCID lookup fails
+    }
+  }
+  
+  if (fullName === 'Unknown Author') {
+    nameSource = 'fallback';
+  }
+  
+  return {
+    given,
+    family,
+    full_name: fullName,
+    orcid,
+    name_source: nameSource
+  };
 }
 
 // Helper function to fetch and format BibTeX
@@ -57,8 +144,8 @@ async function fetchBibTeX(doi: string): Promise<string | null> {
   }
 }
 
-// Helper function to generate BibTeX from metadata (fallback)
-function generateBibTeXFromMetadata(data: any): string {
+// Helper function to generate BibTeX from metadata (fallback) with enhanced authors
+async function generateBibTeXFromMetadataEnhanced(data: any): Promise<string> {
   // Determine entry type
   let entryType = 'article';
   if (data.type === 'book') {
@@ -85,8 +172,14 @@ function generateBibTeXFromMetadata(data: any): string {
   const title = data.title?.[0] || 'Untitled';
   const formattedTitle = `{{${title}}}`;
   
-  // Format authors
-  const authors = data.author?.map((a: any) => formatAuthor(a)).join(' and ') || 'Unknown';
+  // Format authors with enhanced processing
+  let authors = 'Unknown';
+  if (data.author && data.author.length > 0) {
+    const enhancedAuthors = await Promise.all(
+      data.author.map((a: any) => formatAuthorEnhanced(a))
+    );
+    authors = enhancedAuthors.map(a => a.full_name).join(' and ');
+  }
   
   // Build BibTeX entry with proper formatting
   const fields = [];
@@ -144,6 +237,20 @@ const server = new Server(
     },
   }
 );
+
+// Handle initialization
+server.setRequestHandler(InitializeRequestSchema, async (request) => {
+  return {
+    protocolVersion: "2025-06-18",
+    capabilities: {
+      tools: {},
+    },
+    serverInfo: {
+      name: "crossref-mcp-server",
+      version: "1.0.0",
+    },
+  };
+});
 
 // Handle tool listing
 server.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -207,20 +314,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       // Try to get proper BibTeX
       let bibtex = await fetchBibTeX(doi);
       if (!bibtex) {
-        // Fallback to generating from metadata
-        bibtex = generateBibTeXFromMetadata(data);
+        // Fallback to generating from metadata with enhanced authors
+        bibtex = await generateBibTeXFromMetadataEnhanced(data);
       }
       
-      // Extract and format metadata
+      // Extract and format metadata with enhanced author processing
+      const authorsPromises = data.author?.map((author: any) => formatAuthorEnhanced(author)) || [];
+      const authors = await Promise.all(authorsPromises);
+      
       const metadata = {
         doi: data.DOI,
         title: data.title?.[0] || 'Untitled',
-        authors: data.author?.map((author: any) => ({
-          given: author.given || '',
-          family: author.family || '',
-          full_name: formatAuthor(author),
-          orcid: author.ORCID || null,
-        })) || [],
+        authors: authors,
         journal: {
           full_name: data['container-title']?.[0] || '',
           abbreviated: data['short-container-title']?.[0] || data['container-title']?.[0] || '',
