@@ -160,13 +160,24 @@ async function generateBibTeXFromMetadataEnhanced(data: any): Promise<string> {
     entryType = 'phdthesis';
   }
   
-  // Generate citation key
+  // Generate citation key: SurnameYYYYTitle
   const firstAuthor = data.author?.[0];
   const authorName = firstAuthor?.family || 'Unknown';
-  const year = data['published-print']?.['date-parts']?.[0]?.[0] || 
-                data['published-online']?.['date-parts']?.[0]?.[0] || 
+  const year = data['published-print']?.['date-parts']?.[0]?.[0] ||
+                data['published-online']?.['date-parts']?.[0]?.[0] ||
                 new Date().getFullYear();
-  const citationKey = `${authorName}${year}`.replace(/[^a-zA-Z0-9]/g, '');
+
+  // Get first word of title (excluding articles like "The", "A", "An")
+  const titleWords = (data.title?.[0] || 'Untitled').split(/\s+/);
+  let firstTitleWord = titleWords[0];
+  // Skip common articles
+  if (['The', 'A', 'An', 'the', 'a', 'an'].includes(firstTitleWord) && titleWords.length > 1) {
+    firstTitleWord = titleWords[1];
+  }
+  // Clean the first word to keep only alphanumeric characters
+  firstTitleWord = firstTitleWord.replace(/[^a-zA-Z0-9]/g, '');
+
+  const citationKey = `${authorName}${year}${firstTitleWord}`.replace(/[^a-zA-Z0-9]/g, '');
   
   // Format title with double curly brackets
   const title = data.title?.[0] || 'Untitled';
@@ -221,8 +232,11 @@ async function generateBibTeXFromMetadataEnhanced(data: any): Promise<string> {
     fields.push(`  url = {${data.URL}}`);
   }
   
-  // Construct final BibTeX
-  return `@${entryType}{${citationKey},\n${fields.join(',\n')}\n}`;
+  // Construct final BibTeX with proper line breaks
+  const bibtexEntry = `@${entryType}{${citationKey},
+${fields.join(',\n')}
+}`;
+  return bibtexEntry;
 }
 
 // Main server setup
