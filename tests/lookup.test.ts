@@ -19,9 +19,9 @@ test("a DOI: Crossref's record as the plugin reads it", async () => {
 test("math in a title: plain text in title, LaTeX in title_latex and BibTeX", async () => {
   const web = fakeWeb({ ...crossref(PRA_DOI, PRA) });
   const json = describe(await lookup(web.http, PRA_DOI));
-  assert.equal(json.title, "Ratchet current in a PT -symmetric Floquet quantum system");
-  assert.equal(json.title_latex, "Ratchet current in a $\\mathcal{PT}$ -symmetric Floquet quantum system");
-  assert.match(json.bibtex!, /title = \{\{Ratchet current in a \$\\mathcal\{PT\}\$ -symmetric/);
+  assert.equal(json.title, "Ratchet current in a PT-symmetric Floquet quantum system");
+  assert.equal(json.title_latex, "Ratchet current in a $\\mathcal{PT}$-symmetric Floquet quantum system");
+  assert.match(json.bibtex!, /title = \{\{Ratchet current in a \$\\mathcal\{PT\}\$-symmetric/);
 });
 
 test("an arXiv id: the published version through Semantic Scholar, with the eprint", async () => {
