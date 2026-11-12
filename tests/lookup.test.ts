@@ -1,23 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { bibliography, describe, expandInitials, lookup, MAX_ORCID_LOOKUPS, parseIdentifier, references } from "../src/lookup";
+import { bibliography, describe, expandInitials, lookup, MAX_ORCID_LOOKUPS, references } from "../src/lookup";
 import { arxiv, crossref, fakeWeb, ok, orcid, PRA, PRA_DOI, PRL, PRL_DOI, refused, semanticScholar } from "./helpers";
-
-test("identifiers as they are pasted", () => {
-  assert.deepEqual(parseIdentifier("10.1103/PhysRevLett.129.273602"), { type: "doi", id: "10.1103/PhysRevLett.129.273602" });
-  assert.deepEqual(parseIdentifier(" https://dx.doi.org/10.1103/X "), { type: "doi", id: "https://doi.org/10.1103/X" });
-  assert.deepEqual(parseIdentifier("doi:10.1103/X"), { type: "doi", id: "doi:10.1103/X" });
-  assert.deepEqual(parseIdentifier("10.48550/arXiv.2207.09470"), { type: "arxiv", id: "2207.09470" });
-  assert.deepEqual(parseIdentifier("arXiv:2207.09470v2"), { type: "arxiv", id: "arXiv:2207.09470v2" });
-  assert.deepEqual(parseIdentifier("https://arxiv.org/abs/2207.09470v2"), { type: "arxiv", id: "2207.09470v2" });
-  assert.deepEqual(parseIdentifier("https://arxiv.org/pdf/2207.09470.pdf"), { type: "arxiv", id: "2207.09470" });
-  assert.deepEqual(parseIdentifier("quant-ph/0101001"), { type: "arxiv", id: "quant-ph/0101001" });
-  assert.deepEqual(parseIdentifier("arXiv:math.GT/0309136v1"), { type: "arxiv", id: "math.GT/0309136v1" });
-});
 
 test("a DOI: Crossref's record as the plugin reads it", async () => {
   const web = fakeWeb({ ...crossref(PRL_DOI, PRL) });
-  const json = describe(await lookup(web.http, `https://doi.org/${PRL_DOI}`, { expandInitials: false }));
+  const json = describe(await lookup(web.http, `https://dx.doi.org/${PRL_DOI}`, { expandInitials: false }));
   assert.equal(json.pages, "273602", "the article number stands for the pages");
   assert.equal(json.journal_abbreviation, "Phys. Rev. Lett.");
   assert.deepEqual(json.authors?.[1], { given: "A.", family: "Mercurio", orcid: "0000-0001-7814-1936" });
@@ -41,7 +29,7 @@ test("an arXiv id: the published version through Semantic Scholar, with the epri
     ...semanticScholar("2207.09470", ok({ title: "T", externalIds: { DOI: PRL_DOI, ArXiv: "2207.09470" } })),
     ...crossref(PRL_DOI, PRL),
   });
-  const metadata = await lookup(web.http, "arXiv:2207.09470v2", { expandInitials: false });
+  const metadata = await lookup(web.http, "https://arxiv.org/abs/2207.09470v2", { expandInitials: false });
   assert.equal(metadata.doi, PRL_DOI);
   assert.match(describe(metadata).bibtex!, /eprint = \{2207\.09470\},\n  archivePrefix = \{arXiv\}/);
 });

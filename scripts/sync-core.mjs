@@ -25,8 +25,12 @@ mkdirSync(out, { recursive: true });
 const whole = ["CrossrefService.ts", "ArxivService.ts", "OpenLibraryService.ts", "OrcidService.ts", "BibtexGenerator.ts", "nameUtils.ts"];
 for (const file of whole) writeFileSync(join(out, file), header(file) + read(file));
 
-/** A top-level declaration, from `export …` to the closing brace at the start of a line. */
-const block = (declaration) => new RegExp(`^export ${declaration}\\b[\\s\\S]*?^\\}$`, "m");
+/**
+ * A top-level declaration with the doc comment just above it, if any: from the
+ * comment or the declaration to the closing brace at the start of a line.
+ */
+const block = (declaration) =>
+  new RegExp(`(?:^/\\*\\*(?:[^*]|\\*(?!/))*\\*/\\n)?^(?:export )?${declaration}\\b[\\s\\S]*?^\\}$`, "m");
 
 function pick(file, patterns) {
   const text = read(file);
@@ -40,6 +44,6 @@ function pick(file, patterns) {
 
 writeFileSync(join(out, "ports.ts"), pick("ports.ts", [block("interface HttpResponse"), /^export type Http = .*;$/m]));
 writeFileSync(join(out, "types.ts"), pick("types.ts", [block("interface PaperMetadata"), block("interface AuthorRaw")]));
-writeFileSync(join(out, "detectInput.ts"), pick("ImportService.ts", [block("function detectInput")]));
+writeFileSync(join(out, "detectInput.ts"), pick("ImportService.ts", [block("function bareArxiv"), block("function detectInput")]));
 
 console.log(`src/core/: ${[...whole, "ports.ts", "types.ts", "detectInput.ts"].join(", ")}`);
