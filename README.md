@@ -95,7 +95,7 @@ npm run build       # dist/index.js, a single file that needs only Node
 npm run sync-core -- ../Obsidian-Bibliography-Template
 ```
 
-The rest of `src/` is the server: `lookup.ts` (identifiers, ORCID names, several entries at once, references), `server.ts` (the tools), `http.ts` (requests, limits, cache) and `index.ts` (stdio).
+The rest of `src/` is the server: `lookup.ts` (ORCID names, several entries at once, references), `server.ts` (the tools), `http.ts` (requests, limits, cache) and `index.ts` (stdio).
 
 ## Changes from 1.x
 

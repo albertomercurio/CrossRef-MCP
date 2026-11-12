@@ -1,6 +1,6 @@
 {
   "name": "crossref-mcp-server",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "MCP server: metadata and BibTeX for papers and books by DOI or arXiv id (Crossref, Semantic Scholar, arXiv, Open Library, ORCID)",
   "type": "module",
   "bin": {

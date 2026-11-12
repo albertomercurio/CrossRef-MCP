@@ -9,25 +9,6 @@ import { OrcidService, type OrcidRecord } from "./core/OrcidService";
 import type { Http } from "./core/ports";
 import type { AuthorRaw, PaperMetadata } from "./core/types";
 
-export interface Identifier {
-  type: "doi" | "arxiv";
-  id: string;
-}
-
-/**
- * The plugin's detection, plus what is often pasted instead of a bare id: doi.org
- * and arXiv links, and arXiv ids of before 2007 (quant-ph/0101001).
- */
-export function parseIdentifier(raw: string): Identifier {
-  const s = raw.trim().replace(/^<(.*)>$/, "$1").trim();
-  const arxivLink = s.match(/^https?:\/\/(?:www\.|export\.)?arxiv\.org\/(?:abs|pdf|html)\/(.+?)(?:\.pdf)?\/?$/i);
-  if (arxivLink) return { type: "arxiv", id: arxivLink[1] };
-  if (/^(?:arxiv:)?[a-z-]+(?:\.[a-z]{2})?\/\d{7}(?:v\d+)?$/i.test(s)) {
-    return { type: "arxiv", id: s.replace(/^arxiv:/i, "") };
-  }
-  return detectInput(s.replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, "https://doi.org/"));
-}
-
 /** A DOI without its doi.org or "doi:" prefix. */
 function bareDoi(doi: string): string {
   return doi.replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, "").replace(/^doi:/i, "").trim();
@@ -43,35 +24,17 @@ export interface LookupOptions {
 }
 
 /**
- * A preprint whose arXiv record names its journal DOI, as the published paper.
- * The core asks Semantic Scholar for that DOI, and when Semantic Scholar refuses
- * (it limits anonymous requests) reads arXiv without looking at the DOI there.
+ * The record of a DOI or arXiv id, as the plugin imports it: for an arXiv id,
+ * the published version when Semantic Scholar or arXiv names its journal DOI.
  */
-async function publishedVersion(http: Http, preprint: PaperMetadata): Promise<PaperMetadata> {
-  if (preprint.itemType !== "preprint" || !preprint.arxivId) return preprint;
-  try {
-    // The address the core reads, so the answer usually comes from the cache.
-    const feed = await http({ url: `https://export.arxiv.org/api/query?id_list=${preprint.arxivId}` });
-    const doi = feed.status === 200 ? feed.text.match(/<arxiv:doi[^>]*>([^<]+)<\/arxiv:doi>/)?.[1].trim() : undefined;
-    if (!doi || isArxivDoi(doi)) return preprint;
-    const published = await new CrossrefService(http).fetchByDOI(doi);
-    return { ...published, arxivId: preprint.arxivId, inputType: "arxiv" };
-  } catch {
-    return preprint;
-  }
-}
-
-/** The record of a DOI or arXiv id, as the plugin imports it. */
 export async function lookup(http: Http, raw: string, options: LookupOptions = {}): Promise<PaperMetadata> {
-  const { type, id } = parseIdentifier(raw);
+  const { type, id } = detectInput(raw);
   const metadata =
-    type === "arxiv"
-      ? await publishedVersion(http, await new ArxivService(http).fetchByArxivId(id))
-      : await new CrossrefService(http).fetchByDOI(id);
+    type === "arxiv" ? await new ArxivService(http).fetchByArxivId(id) : await new CrossrefService(http).fetchByDOI(id);
   if (options.arxiv) {
-    const preprint = parseIdentifier(options.arxiv);
+    const preprint = detectInput(options.arxiv);
     if (preprint.type !== "arxiv") throw new Error(`"${options.arxiv}" is not an arXiv id.`);
-    metadata.arxivId = preprint.id.replace(/^arxiv:/i, "").replace(/v\d+$/, "");
+    metadata.arxivId = preprint.id;
   }
   if (options.expandInitials !== false) metadata.authors = await expandInitials(http, metadata.authors);
   return metadata;
@@ -224,10 +187,10 @@ export async function bibliography(http: Http, ids: string[], options: Bibliogra
 
 /** What a paper cites, as its publisher deposited it with Crossref. */
 export async function references(http: Http, raw: string) {
-  const { type, id } = parseIdentifier(raw);
+  const { type, id } = detectInput(raw);
   let doi = bareDoi(id);
   if (type === "arxiv") {
-    const metadata = await publishedVersion(http, await new ArxivService(http).fetchByArxivId(id));
+    const metadata = await new ArxivService(http).fetchByArxivId(id);
     if (!metadata.doi || isArxivDoi(metadata.doi)) {
       throw new Error(`arXiv ${id} has no journal DOI: Crossref has reference lists of published papers only.`);
     }
