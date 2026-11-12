@@ -4,7 +4,7 @@ services:
     image: crossref-mcp:latest
     stdin_open: true
     tty: false
-    environment:
-      - NODE_ENV=production
-      - USER_AGENT=CrossRefMCP/1.0 (mailto:alberto.mercurio@epfl.ch)
     init: true
+    environment:
+      - CROSSREF_MAILTO=${CROSSREF_MAILTO:-}
+      - SEMANTIC_SCHOLAR_API_KEY=${SEMANTIC_SCHOLAR_API_KEY:-}

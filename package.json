@@ -1,20 +1,35 @@
 {
   "name": "crossref-mcp-server",
-  "version": "1.0.0",
-  "description": "MCP server for fetching academic paper metadata from CrossRef",
-  "main": "dist/index.js",
+  "version": "2.0.0",
+  "description": "MCP server: metadata and BibTeX for papers and books by DOI or arXiv id (Crossref, Semantic Scholar, arXiv, Open Library, ORCID)",
+  "type": "module",
+  "bin": {
+    "crossref-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "build": "tsc",
+    "build": "node build.mjs",
+    "prepare": "node build.mjs",
     "start": "node dist/index.js",
-    "dev": "tsx src/index.ts"
+    "typecheck": "tsc --noEmit -p .",
+    "test": "node tests/run.mjs",
+    "sync-core": "node scripts/sync-core.mjs"
+  },
+  "author": "Alberto Mercurio",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^0.6.0",
-    "axios": "^1.7.9"
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "mathml-to-latex": "1.5.0",
+    "zod": "4.6.7"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "tsx": "^4.0.0",
-    "typescript": "^5.0.0"
+    "@types/node": "22.20.5",
+    "esbuild": "0.27.7",
+    "typescript": "5.9.3"
   }
 }
